@@ -114,7 +114,7 @@ def topup_methods_kb() -> InlineKeyboardMarkup:
 # ----------------------------------------------------------------- взять номер
 def take_number_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="👤 Написать админу", url="https://t.me/ТВОЙ_USERNAME")],
+        [InlineKeyboardButton(text="👤 Написать админу", url="https://t.me/boostcent")],
     ])
 
 
