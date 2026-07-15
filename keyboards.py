@@ -155,24 +155,44 @@ def admin_topup_confirm_kb() -> InlineKeyboardMarkup:
     ])
 
 
-# ----------------------------------------------------------------- админ-панель
+# ----------------------------------------------------------------- админ-панель (главное меню)
 def admin_panel_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📊 Статистика: пользователи", callback_data="admstat:users")],
-        [InlineKeyboardButton(text="📊 Статистика: заказы", callback_data="admstat:orders")],
-        [InlineKeyboardButton(text="📊 Статистика: обороты", callback_data="admstat:turnover")],
-        [InlineKeyboardButton(text="📊 Топ услуг", callback_data="admstat:top")],
-        [InlineKeyboardButton(text="🧾 История заказов", callback_data="admorders:0:all")],
-        [InlineKeyboardButton(text="💳 Заявки на пополнение", callback_data="admtopups:list")],
+        [InlineKeyboardButton(text="📦 Заказы", callback_data="admord:platforms")],
+        [InlineKeyboardButton(text="💳 Пополнения", callback_data="admtopups:list")],
+        [InlineKeyboardButton(text="👥 Пользователи", callback_data="admstat:users")],
+        [InlineKeyboardButton(text="💰 Финансы", callback_data="admstat:turnover")],
+        [InlineKeyboardButton(text="🏆 Топ услуг", callback_data="admstat:top")],
         [InlineKeyboardButton(text="📢 Рассылка", callback_data="broadcast:start")],
     ])
 
 
-def admin_orders_page_kb(offset: int, status: str, order_ids: list[int]) -> InlineKeyboardMarkup:
+# ----------------------------------------------------------------- админ: заказы — платформа → услуга → список
+def admin_order_platforms_kb() -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton(text=name, callback_data=f"admordplat:{key}")]
+            for key, name in PLATFORM_NAMES.items()]
+    rows.append([InlineKeyboardButton(text=BTN_BACK, callback_data="admpanel:back")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def admin_order_services_kb(platform: str) -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton(text="📂 Все услуги", callback_data=f"admordsvc:{platform}:all")]]
+    for service_key in PLATFORM_SERVICES[platform]:
+        rows.append([InlineKeyboardButton(
+            text=SERVICE_LABELS[service_key], callback_data=f"admordsvc:{platform}:{service_key}"
+        )])
+    rows.append([InlineKeyboardButton(text=BTN_BACK, callback_data="admord:platforms")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def admin_order_list_kb(platform: str, service_key: str, offset: int, status: str,
+                         order_ids: list[int]) -> InlineKeyboardMarkup:
     rows = []
     row = []
     for i, oid in enumerate(order_ids, 1):
-        row.append(InlineKeyboardButton(text=f"№{oid}", callback_data=f"admorder:{oid}:{offset}:{status}"))
+        row.append(InlineKeyboardButton(
+            text=f"№{oid}", callback_data=f"admorditem:{oid}:{platform}:{service_key}:{offset}:{status}"
+        ))
         if i % 5 == 0:
             rows.append(row)
             row = []
@@ -181,25 +201,36 @@ def admin_orders_page_kb(offset: int, status: str, order_ids: list[int]) -> Inli
 
     nav = []
     if offset > 0:
-        nav.append(InlineKeyboardButton(text="⬅️", callback_data=f"admorders:{max(0, offset-10)}:{status}"))
+        nav.append(InlineKeyboardButton(
+            text="⬅️", callback_data=f"admordlist:{platform}:{service_key}:{max(0, offset-10)}:{status}"
+        ))
     if len(order_ids) == 10:
-        nav.append(InlineKeyboardButton(text="➡️", callback_data=f"admorders:{offset+10}:{status}"))
+        nav.append(InlineKeyboardButton(
+            text="➡️", callback_data=f"admordlist:{platform}:{service_key}:{offset+10}:{status}"
+        ))
     if nav:
         rows.append(nav)
 
     filters = [
-        InlineKeyboardButton(text="Все", callback_data="admorders:0:all"),
-        InlineKeyboardButton(text="В ожидании", callback_data="admorders:0:pending"),
+        InlineKeyboardButton(
+            text="• Все" if status == "all" else "Все",
+            callback_data=f"admordlist:{platform}:{service_key}:0:all",
+        ),
+        InlineKeyboardButton(
+            text="• В ожидании" if status == "pending" else "В ожидании",
+            callback_data=f"admordlist:{platform}:{service_key}:0:pending",
+        ),
     ]
     rows.append(filters)
-    rows.append([InlineKeyboardButton(text=BTN_BACK, callback_data="admpanel:back")])
+    rows.append([InlineKeyboardButton(text=BTN_BACK, callback_data=f"admordplat:{platform}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def admin_order_detail_kb(order_id: int, offset: int, status: str) -> InlineKeyboardMarkup:
+def admin_order_detail_kb(order_id: int, platform: str, service_key: str,
+                           offset: int, status: str) -> InlineKeyboardMarkup:
     kb = admin_order_kb(order_id)
     kb.inline_keyboard.append(
-        [InlineKeyboardButton(text=BTN_BACK, callback_data=f"admorders:{offset}:{status}")]
+        [InlineKeyboardButton(text=BTN_BACK, callback_data=f"admordlist:{platform}:{service_key}:{offset}:{status}")]
     )
     return kb
 
