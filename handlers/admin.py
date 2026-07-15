@@ -5,9 +5,10 @@ from aiogram.types import CallbackQuery, Message
 import database as db
 from config import ADMIN_CHAT_ID, MIN_TOPUP_AMOUNT
 from keyboards import (
-    admin_order_kb, admin_panel_kb, admin_orders_page_kb, admin_order_detail_kb,
-    admin_ban_notice_kb, broadcast_target_kb, broadcast_confirm_kb,
+    admin_order_kb, admin_panel_kb, admin_ban_notice_kb,
+    broadcast_target_kb, broadcast_confirm_kb,
     admin_pending_topups_kb, admin_topup_confirm_kb,
+    admin_order_platforms_kb, admin_order_services_kb, admin_order_list_kb, admin_order_detail_kb,
 )
 from services import PLATFORM_NAMES, SERVICE_LABELS
 from states import BroadcastStates, AdminTopupStates
@@ -370,15 +371,6 @@ async def admin_stats(callback: CallbackQuery):
             f"Новых за сутки: {s['today']}\n"
             f"Заблокировано: {s['banned']}"
         )
-    elif kind == "orders":
-        s = await db.stats_orders()
-        text = (
-            f"📊 <b>Заказы</b>\n\n"
-            f"Всего: {s['total']}\n"
-            f"В ожидании: {s['pending']}\n"
-            f"Сделано: {s['done']}\n"
-            f"Отменено: {s['cancelled']}"
-        )
     elif kind == "turnover":
         s = await db.stats_turnover()
         text = (
@@ -400,32 +392,65 @@ async def admin_stats(callback: CallbackQuery):
     await callback.message.edit_text(text, reply_markup=admin_panel_kb())
 
 
-# ================================================================= история заказов
-@router.callback_query(F.data.startswith("admorders:"))
-async def admin_orders_list(callback: CallbackQuery):
-    _, offset, status = callback.data.split(":")
-    offset = int(offset)
-    db_status = None if status == "all" else "В ожидании"
+# ================================================================= заказы: платформа → услуга → список
+@router.callback_query(F.data == "admord:platforms")
+async def admord_platforms(callback: CallbackQuery):
+    s = await db.stats_orders()
+    text = (
+        f"📦 <b>Заказы</b>\n\n"
+        f"Всего: {s['total']} · В ожидании: {s['pending']} · "
+        f"Сделано: {s['done']} · Отменено: {s['cancelled']}\n\n"
+        f"Выберите платформу:"
+    )
+    await callback.message.edit_text(text, reply_markup=admin_order_platforms_kb())
 
-    orders = await db.get_orders_page(offset=offset, limit=10, status=db_status)
-    total = await db.count_orders(status=db_status)
 
-    if not orders:
-        await callback.message.edit_text(
-            "Заказов не найдено.", reply_markup=admin_orders_page_kb(offset, status, [])
-        )
-        return
-
-    text = f"🧾 <b>История заказов</b> (всего: {total})\nВыберите заказ:"
-    order_ids = [o["id"] for o in orders]
+@router.callback_query(F.data.startswith("admordplat:"))
+async def admordplat(callback: CallbackQuery):
+    platform = callback.data.split(":")[1]
+    plat_name = PLATFORM_NAMES.get(platform, platform)
     await callback.message.edit_text(
-        text, reply_markup=admin_orders_page_kb(offset, status, order_ids)
+        f"{plat_name} — выберите услугу:", reply_markup=admin_order_services_kb(platform)
     )
 
 
-@router.callback_query(F.data.startswith("admorder:"))
-async def admin_order_detail(callback: CallbackQuery):
-    _, order_id, offset, status = callback.data.split(":")
+async def _render_order_list(callback: CallbackQuery, platform: str, service_key: str, offset: int, status: str):
+    db_status = None if status == "all" else "В ожидании"
+    db_service = None if service_key == "all" else service_key
+
+    orders = await db.get_orders_page(
+        offset=offset, limit=10, status=db_status, platform=platform, service_key=db_service
+    )
+    total = await db.count_orders(status=db_status, platform=platform, service_key=db_service)
+
+    plat_name = PLATFORM_NAMES.get(platform, platform)
+    svc_name = "Все услуги" if service_key == "all" else SERVICE_LABELS.get(service_key, service_key)
+
+    if not orders:
+        text = f"🧾 <b>{plat_name} — {svc_name}</b>\n\nЗаказов не найдено."
+    else:
+        text = f"🧾 <b>{plat_name} — {svc_name}</b> (всего: {total})\nВыберите заказ:"
+    order_ids = [o["id"] for o in orders]
+    await callback.message.edit_text(
+        text, reply_markup=admin_order_list_kb(platform, service_key, offset, status, order_ids)
+    )
+
+
+@router.callback_query(F.data.startswith("admordsvc:"))
+async def admordsvc(callback: CallbackQuery):
+    _, platform, service_key = callback.data.split(":")
+    await _render_order_list(callback, platform, service_key, 0, "all")
+
+
+@router.callback_query(F.data.startswith("admordlist:"))
+async def admordlist(callback: CallbackQuery):
+    _, platform, service_key, offset, status = callback.data.split(":")
+    await _render_order_list(callback, platform, service_key, int(offset), status)
+
+
+@router.callback_query(F.data.startswith("admorditem:"))
+async def admorditem(callback: CallbackQuery):
+    _, order_id, platform, service_key, offset, status = callback.data.split(":")
     order_id, offset = int(order_id), int(offset)
     order = await db.get_order(order_id)
     if not order:
@@ -447,7 +472,9 @@ async def admin_order_detail(callback: CallbackQuery):
         f"Статус: {order['status']}\n"
         f"Создан: {order['created_at'].strftime('%d.%m.%Y %H:%M')}"
     )
-    await callback.message.edit_text(text, reply_markup=admin_order_detail_kb(order_id, offset, status))
+    await callback.message.edit_text(
+        text, reply_markup=admin_order_detail_kb(order_id, platform, service_key, offset, status)
+    )
 
 
 # ================================================================= рассылка
