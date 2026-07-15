@@ -7,7 +7,7 @@ from config import ADMIN_CHAT_ID, MIN_TOPUP_AMOUNT
 from keyboards import (
     admin_order_kb, admin_panel_kb, admin_orders_page_kb, admin_order_detail_kb,
     admin_ban_notice_kb, broadcast_target_kb, broadcast_confirm_kb,
-    admin_pending_topups_kb,
+    admin_pending_topups_kb, admin_topup_confirm_kb,
 )
 from services import PLATFORM_NAMES, SERVICE_LABELS
 from states import BroadcastStates, AdminTopupStates
@@ -105,18 +105,20 @@ async def admin_topup_action(callback: CallbackQuery, state: FSMContext):
 
 
 @router.message(Command("cancel"), AdminTopupStates.waiting_amount)
+@router.message(Command("cancel"), AdminTopupStates.confirm_amount)
 @router.message(Command("cancel"), AdminTopupStates.waiting_reason)
+@router.message(Command("cancel"), AdminTopupStates.confirm_reason)
 async def admin_topup_cancel(message: Message, state: FSMContext):
     await state.clear()
     await message.answer("Отменено.")
 
 
 @router.message(AdminTopupStates.waiting_amount)
-async def admin_topup_amount(message: Message, state: FSMContext, bot: Bot):
+async def admin_topup_amount(message: Message, state: FSMContext):
     if not _is_admin_chat(message.chat.id):
         return
     if not message.text or not message.text.isdigit():
-        await message.answer("❗ Введите сумму числом (только цифры), либо /cancel для отмены.")
+        await message.answer("❗ Введите сумму числом (только цифры, без пробелов и ID), либо /cancel для отмены.")
         return
 
     amount = int(message.text)
@@ -132,47 +134,17 @@ async def admin_topup_amount(message: Message, state: FSMContext, bot: Bot):
         await state.clear()
         return
 
-    new_balance = await db.change_balance(
-        topup["user_id"], amount, admin_id=message.from_user.id,
-        reason=f"Пополнение по чеку №{topup_id}",
-    )
-    ok = await db.set_topup_status(topup_id, "Принято", amount)
-    if not ok:
-        # кто-то успел обработать заявку параллельно — деньги уже начислены выше, откатываем
-        await db.change_balance(
-            topup["user_id"], -amount, admin_id=message.from_user.id,
-            reason=f"Откат: заявка №{topup_id} уже была обработана",
-        )
-        await message.answer("Эта заявка уже была обработана другим способом. Начисление отменено.")
-        await state.clear()
-        return
-
+    await state.update_data(kind="credit", amount=amount)
+    await state.set_state(AdminTopupStates.confirm_amount)
     await message.answer(
-        f"✅ Заявка №{topup_id} принята.\nНачислено {amount} so'm пользователю {topup['user_id']}.\n"
-        f"Баланс: {new_balance} so'm"
+        f"Подтвердите:\nНачислить <b>{amount} so'm</b> пользователю {topup['user_id']} "
+        f"(заявка №{topup_id})?",
+        reply_markup=admin_topup_confirm_kb(),
     )
-
-    try:
-        await bot.edit_message_caption(
-            chat_id=data["msg_chat_id"], message_id=data["msg_id"],
-            caption=f"💰 Заявка на пополнение №{topup_id}\n\n✅ Принято, начислено {amount} so'm",
-        )
-    except Exception:
-        pass
-
-    try:
-        await bot.send_message(
-            topup["user_id"],
-            f"✅ Ваш баланс пополнен на {amount} so'm.\nТекущий баланс: {new_balance} so'm",
-        )
-    except Exception:
-        pass
-
-    await state.clear()
 
 
 @router.message(AdminTopupStates.waiting_reason)
-async def admin_topup_reason(message: Message, state: FSMContext, bot: Bot):
+async def admin_topup_reason(message: Message, state: FSMContext):
     if not _is_admin_chat(message.chat.id):
         return
     if not message.text:
@@ -188,30 +160,124 @@ async def admin_topup_reason(message: Message, state: FSMContext, bot: Bot):
         await state.clear()
         return
 
-    ok = await db.set_topup_status(topup_id, "Отклонено")
-    if not ok:
-        await message.answer("Эта заявка уже была обработана другим способом.")
+    await state.update_data(kind="reject", reason=reason)
+    await state.set_state(AdminTopupStates.confirm_reason)
+    await message.answer(
+        f"Подтвердите:\nОтклонить заявку №{topup_id} (пользователь {topup['user_id']}) с причиной:\n"
+        f"«{reason}»?",
+        reply_markup=admin_topup_confirm_kb(),
+    )
+
+
+@router.callback_query(F.data.startswith("admtopupconfirm:"))
+async def admin_topup_confirm(callback: CallbackQuery, state: FSMContext, bot: Bot):
+    if not _is_admin_chat(callback.message.chat.id):
+        return
+    action = callback.data.split(":")[1]
+    data = await state.get_data()
+    kind = data.get("kind")
+
+    if action == "abort":
+        await state.clear()
+        await callback.answer()
+        await callback.message.edit_text("🚫 Отменено.")
+        return
+
+    if action == "retry":
+        await callback.answer()
+        if kind == "credit":
+            await state.set_state(AdminTopupStates.waiting_amount)
+            await callback.message.edit_text(
+                f"Введите сумму зачисления для заявки №{data.get('topup_id')} заново.\nДля отмены — /cancel"
+            )
+        else:
+            await state.set_state(AdminTopupStates.waiting_reason)
+            await callback.message.edit_text(
+                f"Введите причину отклонения для заявки №{data.get('topup_id')} заново.\nДля отмены — /cancel"
+            )
+        return
+
+    # action == "go"
+    topup_id = data.get("topup_id")
+    topup = await db.get_topup(topup_id)
+    if not topup or topup["status"] != "В ожидании":
+        await callback.answer("Заявка уже обработана.", show_alert=True)
         await state.clear()
         return
 
-    await message.answer(f"❌ Заявка №{topup_id} отклонена, причина отправлена пользователю.")
-
-    try:
-        await bot.edit_message_caption(
-            chat_id=data["msg_chat_id"], message_id=data["msg_id"],
-            caption=f"💰 Заявка на пополнение №{topup_id}\n\n❌ Отклонено\nПричина: {reason}",
+    if kind == "credit":
+        amount = data["amount"]
+        new_balance = await db.change_balance(
+            topup["user_id"], amount, admin_id=callback.from_user.id,
+            reason=f"Пополнение по чеку №{topup_id}",
         )
-    except Exception:
-        pass
+        ok = await db.set_topup_status(topup_id, "Принято", amount)
+        if not ok:
+            await db.change_balance(
+                topup["user_id"], -amount, admin_id=callback.from_user.id,
+                reason=f"Откат: заявка №{topup_id} уже была обработана",
+            )
+            await callback.answer("Заявка уже была обработана другим способом. Начисление отменено.", show_alert=True)
+            await state.clear()
+            return
 
-    try:
-        await bot.send_message(
-            topup["user_id"],
-            f"❌ Ваш чек на пополнение отклонён.\nПричина: {reason}\n\n"
-            f"Если считаете это ошибкой — напишите в поддержку.",
+        await callback.answer("Зачислено ✅")
+        await callback.message.edit_text(
+            f"✅ Заявка №{topup_id} принята.\nНачислено {amount} so'm пользователю {topup['user_id']}.\n"
+            f"Баланс: {new_balance} so'm"
         )
-    except Exception:
-        pass
+
+        try:
+            await bot.edit_message_caption(
+                chat_id=data["msg_chat_id"], message_id=data["msg_id"],
+                caption=f"💰 Заявка на пополнение №{topup_id}\n\n✅ Принято, начислено {amount} so'm",
+            )
+        except Exception:
+            pass
+
+        try:
+            await bot.send_message(
+                topup["user_id"],
+                f"✅ Ваш счёт пополнен на {amount} so'm.\nТекущий баланс: {new_balance} so'm",
+            )
+        except Exception:
+            await callback.message.answer(
+                "⚠️ Деньги начислены, но сообщение клиенту не доставлено "
+                "(возможно, он заблокировал бота)."
+            )
+
+    else:  # reject
+        reason = data["reason"]
+        ok = await db.set_topup_status(topup_id, "Отклонено")
+        if not ok:
+            await callback.answer("Заявка уже была обработана другим способом.", show_alert=True)
+            await state.clear()
+            return
+
+        await callback.answer("Отклонено ❌")
+        await callback.message.edit_text(
+            f"❌ Заявка №{topup_id} отклонена.\nПричина: {reason}"
+        )
+
+        try:
+            await bot.edit_message_caption(
+                chat_id=data["msg_chat_id"], message_id=data["msg_id"],
+                caption=f"💰 Заявка на пополнение №{topup_id}\n\n❌ Отклонено\nПричина: {reason}",
+            )
+        except Exception:
+            pass
+
+        try:
+            await bot.send_message(
+                topup["user_id"],
+                f"❌ Ваш чек на пополнение отклонён.\nПричина: {reason}\n\n"
+                f"Если считаете это ошибкой — напишите в поддержку.",
+            )
+        except Exception:
+            await callback.message.answer(
+                "⚠️ Заявка отклонена, но сообщение клиенту не доставлено "
+                "(возможно, он заблокировал бота)."
+            )
 
     await state.clear()
 
