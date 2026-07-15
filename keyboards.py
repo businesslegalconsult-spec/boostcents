@@ -135,6 +135,16 @@ def admin_ban_notice_kb(user_id: int) -> InlineKeyboardMarkup:
     ])
 
 
+# ----------------------------------------------------------------- админ: заявка на пополнение (чек)
+def admin_topup_kb(topup_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✅ Принять", callback_data=f"admtopup:approve:{topup_id}"),
+            InlineKeyboardButton(text="❌ Отклонить", callback_data=f"admtopup:reject:{topup_id}"),
+        ],
+    ])
+
+
 # ----------------------------------------------------------------- админ-панель
 def admin_panel_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -143,6 +153,7 @@ def admin_panel_kb() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="📊 Статистика: обороты", callback_data="admstat:turnover")],
         [InlineKeyboardButton(text="📊 Топ услуг", callback_data="admstat:top")],
         [InlineKeyboardButton(text="🧾 История заказов", callback_data="admorders:0:all")],
+        [InlineKeyboardButton(text="💳 Заявки на пополнение", callback_data="admtopups:list")],
         [InlineKeyboardButton(text="📢 Рассылка", callback_data="broadcast:start")],
     ])
 
@@ -181,6 +192,18 @@ def admin_order_detail_kb(order_id: int, offset: int, status: str) -> InlineKeyb
         [InlineKeyboardButton(text=BTN_BACK, callback_data=f"admorders:{offset}:{status}")]
     )
     return kb
+
+
+def admin_pending_topups_kb(topups: list) -> InlineKeyboardMarkup:
+    rows = []
+    for t in topups:
+        rows.append([InlineKeyboardButton(
+            text=f"№{t['id']} · {t['user_id']} · ✅", callback_data=f"admtopup:approve:{t['id']}"
+        ), InlineKeyboardButton(
+            text="❌", callback_data=f"admtopup:reject:{t['id']}"
+        )])
+    rows.append([InlineKeyboardButton(text=BTN_BACK, callback_data="admpanel:back")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def broadcast_target_kb() -> InlineKeyboardMarkup:
