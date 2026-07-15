@@ -3,7 +3,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery
 import database as db
 from config import CLICK_CARD, PAYNET_CARD, ADMIN_CHAT_ID
-from keyboards import BTN_TOPUP, BTN_BACK, main_menu_kb, back_only_kb, topup_methods_kb
+from keyboards import BTN_TOPUP, BTN_BACK, main_menu_kb, back_only_kb, topup_methods_kb, admin_topup_kb
 from states import TopUpStates
 
 router = Router()
@@ -65,9 +65,9 @@ async def receipt_received(message: Message, state: FSMContext, bot: Bot):
                 f"💰 Заявка на пополнение №{topup_id}\n"
                 f"Пользователь: {message.from_user.id} (@{message.from_user.username})\n"
                 f"Способ: {METHOD_NAMES.get(method, method)}\n\n"
-                f"Проверьте сумму на чеке и зачислите вручную командой:\n"
-                f"/topup {message.from_user.id} сумма"
+                f"Проверьте сумму на чеке и нажмите «Принять» или «Отклонить»."
             ),
+            reply_markup=admin_topup_kb(topup_id),
         )
 
 
