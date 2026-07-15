@@ -3,7 +3,8 @@ import logging
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from config import BOT_TOKEN
+from aiogram.types import MenuButtonWebApp, WebAppInfo
+from config import BOT_TOKEN, SITE_URL
 import database as db
 from handlers import start, menu, orders, balance, admin
 
@@ -22,6 +23,9 @@ async def main():
     await db.init_db()
     try:
         await bot.delete_webhook(drop_pending_updates=True)
+        await bot.set_chat_menu_button(
+            menu_button=MenuButtonWebApp(text="🌐 Наш сайт", web_app=WebAppInfo(url=SITE_URL))
+        )
         await dp.start_polling(bot)
     finally:
         await db.close_db()
