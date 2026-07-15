@@ -260,6 +260,42 @@ async def create_topup(user_id: int, method: str, file_id: str) -> int:
         return row["id"]
 
 
+async def get_topup(topup_id: int):
+    async with pool.acquire() as con:
+        return await con.fetchrow("SELECT * FROM topups WHERE id=$1", topup_id)
+
+
+async def set_topup_status(topup_id: int, status: str, amount: int | None = None) -> bool:
+    """Обновляет статус заявки, только если она ещё 'В ожидании' (защита от повторной обработки).
+    Возвращает True, если обновление прошло."""
+    async with pool.acquire() as con:
+        if amount is not None:
+            row = await con.fetchrow(
+                "UPDATE topups SET status=$2, amount=$3 "
+                "WHERE id=$1 AND status='В ожидании' RETURNING id",
+                topup_id, status, amount,
+            )
+        else:
+            row = await con.fetchrow(
+                "UPDATE topups SET status=$2 "
+                "WHERE id=$1 AND status='В ожидании' RETURNING id",
+                topup_id, status,
+            )
+        return row is not None
+
+
+async def get_pending_topups(limit: int = 10):
+    async with pool.acquire() as con:
+        return await con.fetch(
+            "SELECT * FROM topups WHERE status='В ожидании' ORDER BY id ASC LIMIT $1", limit
+        )
+
+
+async def count_pending_topups() -> int:
+    async with pool.acquire() as con:
+        return await con.fetchval("SELECT COUNT(*) FROM topups WHERE status='В ожидании'")
+
+
 # ---------------------------------------------------------------- рассылка
 async def get_all_user_ids():
     async with pool.acquire() as con:
