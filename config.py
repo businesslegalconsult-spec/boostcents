@@ -18,9 +18,9 @@ SITE_URL = "https://xaruem.github.io/BoostCent/"
 
 # Каналы на обязательную подписку: (название, ссылка для кнопки, chat_id/username для проверки подписки)
 CHANNELS = [
-    {"title": "Канал 1", "url": "https://t.me/channel1", "chat_id": "@channel1"},
-    {"title": "Канал 2", "url": "https://t.me/channel2", "chat_id": "@channel2"},
-    {"title": "Канал 3", "url": "https://t.me/channel3", "chat_id": "@channel3"},
+    {"title": "Канал 1", "url": "https://t.me/channel1", "-1003168821750": @https://t.me/WebFlow_siteuz
+    {"title": "Канал 2", "url": "https://t.me/channel2", "-1003955805384": "@https://t.me/Lawcansalting"},
+    {"title": "Канал 3", "url": "https://t.me/channel3", "-1004335511052": "@https://t.me/boostcentoff"},
 ]
 
 # Защита от спама некорректными ссылками/числами
