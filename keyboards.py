@@ -145,6 +145,16 @@ def admin_topup_kb(topup_id: int) -> InlineKeyboardMarkup:
     ])
 
 
+def admin_topup_confirm_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✅ Подтвердить", callback_data="admtopupconfirm:go"),
+            InlineKeyboardButton(text="✏️ Ввести заново", callback_data="admtopupconfirm:retry"),
+        ],
+        [InlineKeyboardButton(text="🚫 Отмена", callback_data="admtopupconfirm:abort")],
+    ])
+
+
 # ----------------------------------------------------------------- админ-панель
 def admin_panel_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
