@@ -23,4 +23,5 @@ class BroadcastStates(StatesGroup):
 
 
 class AdminTopupStates(StatesGroup):
-    waiting_amount = State()  # если решите перейти на кнопку вместо команды — задел на будущее
+    waiting_amount = State()  # админ вводит сумму зачисления после нажатия "Принять"
+    waiting_reason = State()  # админ вводит причину после нажатия "Отклонить"
