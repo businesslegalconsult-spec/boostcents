@@ -235,23 +235,37 @@ async def set_order_status(order_id: int, status: str):
         await con.execute("UPDATE orders SET status=$2 WHERE id=$1", order_id, status)
 
 
-async def get_orders_page(offset: int = 0, limit: int = 10, status: str | None = None):
-    async with pool.acquire() as con:
-        if status:
-            return await con.fetch(
-                "SELECT * FROM orders WHERE status=$1 ORDER BY id DESC LIMIT $2 OFFSET $3",
-                status, limit, offset,
-            )
-        return await con.fetch(
-            "SELECT * FROM orders ORDER BY id DESC LIMIT $1 OFFSET $2", limit, offset
-        )
+def _orders_where(status: str | None, platform: str | None, service_key: str | None):
+    conditions = []
+    params = []
+    if status:
+        params.append(status)
+        conditions.append(f"status=${len(params)}")
+    if platform:
+        params.append(platform)
+        conditions.append(f"platform=${len(params)}")
+    if service_key:
+        params.append(service_key)
+        conditions.append(f"service_key=${len(params)}")
+    where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    return where, params
 
 
-async def count_orders(status: str | None = None) -> int:
+async def get_orders_page(offset: int = 0, limit: int = 10, status: str | None = None,
+                           platform: str | None = None, service_key: str | None = None):
+    where, params = _orders_where(status, platform, service_key)
     async with pool.acquire() as con:
-        if status:
-            return await con.fetchval("SELECT COUNT(*) FROM orders WHERE status=$1", status)
-        return await con.fetchval("SELECT COUNT(*) FROM orders")
+        params_full = params + [limit, offset]
+        query = f"SELECT * FROM orders {where} ORDER BY id DESC LIMIT ${len(params)+1} OFFSET ${len(params)+2}"
+        return await con.fetch(query, *params_full)
+
+
+async def count_orders(status: str | None = None, platform: str | None = None,
+                        service_key: str | None = None) -> int:
+    where, params = _orders_where(status, platform, service_key)
+    async with pool.acquire() as con:
+        query = f"SELECT COUNT(*) FROM orders {where}"
+        return await con.fetchval(query, *params)
 
 
 # ---------------------------------------------------------------- пополнения
