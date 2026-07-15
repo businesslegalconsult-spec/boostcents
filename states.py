@@ -23,5 +23,7 @@ class BroadcastStates(StatesGroup):
 
 
 class AdminTopupStates(StatesGroup):
-    waiting_amount = State()  # админ вводит сумму зачисления после нажатия "Принять"
-    waiting_reason = State()  # админ вводит причину после нажатия "Отклонить"
+    waiting_amount = State()   # админ вводит сумму зачисления после нажатия "Принять"
+    confirm_amount = State()   # подтверждение суммы перед начислением
+    waiting_reason = State()   # админ вводит причину после нажатия "Отклонить"
+    confirm_reason = State()   # подтверждение причины перед отклонением
