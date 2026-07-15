@@ -97,8 +97,12 @@ async def get_balance(user_id: int) -> int:
 async def change_balance(user_id: int, delta: int, admin_id: int | None = None, reason: str = "") -> int:
     async with pool.acquire() as con:
         async with con.transaction():
+            # upsert: если пользователя почему-то ещё нет в users — создаём его с этим балансом,
+            # а не падаем с ошибкой (раньше тут был TypeError: 'NoneType' object is not subscriptable)
             row = await con.fetchrow(
-                "UPDATE users SET balance = balance + $2 WHERE user_id=$1 RETURNING balance",
+                "INSERT INTO users (user_id, balance) VALUES ($1, $2) "
+                "ON CONFLICT (user_id) DO UPDATE SET balance = users.balance + EXCLUDED.balance "
+                "RETURNING balance",
                 user_id, delta,
             )
             new_balance = row["balance"]
